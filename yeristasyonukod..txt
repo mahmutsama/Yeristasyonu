@@ -1,0 +1,885 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.IO.Ports;
+using System.Linq.Expressions;
+using offis = Microsoft.Office.Interop.Excel;
+using OpenTK;
+using OpenTK.Graphics.OpenGL;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using System.Windows.Forms.DataVisualization.Charting;
+using static OpenTK.Graphics.OpenGL.GL;
+using Microsoft.Office.Interop.Excel;
+using GMap.NET.MapProviders;
+using System.IO;
+using AForge.Video;
+using AForge.Video.DirectShow;
+using Chart = System.Windows.Forms.DataVisualization.Charting.Chart;
+using Action = System.Action;
+using static GMap.NET.Entity.OpenStreetMapGraphHopperGeocodeEntity;
+using Accord.Video.FFMPEG;
+using Accord.Video;
+using System.Globalization;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Tab;
+
+
+namespace Youtube3D_Simulasyon
+{
+    public partial class Form1 : Form
+    {
+        private DateTime startTime;
+    
+        float x = 0, y = 0, z = 0;
+        bool cx = false, cy = false, cz = false;
+
+        FilterInfoCollection videoDevices; // Bilgisayara bağlı kameraları tutan dizi
+        private VideoCaptureDevice videoSource;
+        private VideoFileWriter videoWriter;
+        private bool isRecording = false;
+
+
+
+        string gelendeger = "0";
+        string basinc1 = "0";
+        string basinc2 = "0";
+        string sicaklik = "0";
+        string irtifaFarki = "0";
+
+
+        int paketNo = 1;
+
+
+        int satir = 1;
+        int sutun = 1;
+        int satirno = 1;
+
+
+        public Form1()
+        {
+            InitializeComponent();
+            CheckForIllegalCrossThreadCalls = false;
+
+
+            videoDevices = new FilterInfoCollection(FilterCategory.VideoInputDevice);
+
+            foreach (FilterInfo device in videoDevices)
+            {
+                comboBox1.Items.Add(device.Name);
+            }
+
+            if (comboBox1.Items.Count > 0)
+            {
+                comboBox1.SelectedIndex = 0;
+            }
+
+
+            this.FormClosing += new FormClosingEventHandler(Form1_FormClosing);
+        }
+
+
+
+
+
+        private void Form1_Load(object sender, EventArgs e)
+        {
+
+
+            string[] portlar = SerialPort.GetPortNames();
+
+            foreach (string portAdi in portlar)
+            {
+                cmbSerialPort.Items.Add(portAdi);
+            }
+
+            GL.ClearColor(Color.Black);//Color.FromArgb(143, 212, 150)
+
+
+
+
+            // Tüm chart'ler için ayarları uygulamak
+
+            ConfigureChart(chart1);
+            ConfigureChart(chart2);
+            ConfigureChart(chart3);
+            ConfigureChart(chart4);
+            ConfigureChart(chart5);
+            ConfigureChart(chart6);
+            ConfigureChart(chart7);
+            ConfigureChart(chart8);
+            ConfigureChart(chart9);
+            ConfigureChart(chart10);
+
+            map.DragButton = MouseButtons.Left;
+            map.MapProvider = GMap.NET.MapProviders.GoogleMapProvider.Instance;
+            map.CanDragMap = true;
+
+
+
+        }
+
+        private static void ConfigureChart(Chart chart)
+        {
+            chart.ChartAreas[0].AxisX.LabelStyle.Format = "HH:mm:ss";
+            chart.ChartAreas[0].AxisX.MajorGrid.Enabled = false; // Ana ızgaraları devre dışı bırak
+            chart.ChartAreas[0].AxisX.MinorGrid.Enabled = false; // Yardımcı ızgaraları devre dışı bırak
+            chart.ChartAreas[0].BorderWidth = 0; // Grafik alanının kenar çizgilerini kaldırma
+            chart.ChartAreas[0].BackColor = Color.Transparent; // Grafik alanının arka planını şeffaf yapma
+
+
+            chart.ChartAreas[0].AxisX.Interval = 1;
+          
+
+
+
+            // Grafik kenar çizgilerini kaldırma
+            chart.BorderlineDashStyle = ChartDashStyle.NotSet;
+            chart.BorderWidth = 0;
+            chart.BackColor = Color.Transparent; // Grafik arka planını şeffaf yapma
+
+            chart.ChartAreas[0].AxisX.IntervalType = System.Windows.Forms.DataVisualization.Charting.DateTimeIntervalType.Seconds;
+            chart.Series[0].ChartType = System.Windows.Forms.DataVisualization.Charting.SeriesChartType.Line;
+            chart.Series[0].XValueType = System.Windows.Forms.DataVisualization.Charting.ChartValueType.DateTime;
+        }
+
+        private void komutGonder_Click(object sender, EventArgs e)
+
+
+        {
+
+            string command = filtreSure1.Text + filtreRengi1.Text + filtreSure2.Text + filtreRengi2.Text;
+            string fullCommand = command; // Komutun başına 'S' harfini ekle
+            if (serialPort1.IsOpen)
+            {
+                serialPort1.WriteLine(fullCommand);
+                komutBilgi.Text = "Komut gönderildi: " + command;
+            }
+            else
+            {
+                komutBilgi.Text = "Seri port açık değil.";
+            }
+
+
+        }
+        private void Timer1_Tick(object sender, EventArgs e)
+        {
+            throw new NotImplementedException();
+        }
+
+        private async void timer1_Tick_1(object sender, EventArgs e)
+        {
+            
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        
+                        gelendeger = serialPort1.ReadLine();
+                        string[] telemetri = gelendeger.Split('*');
+
+                             for (int i = 0; i < telemetri.Length; i++)
+                    {
+                        if (telemetri[i].Contains("."))
+                        {
+                            telemetri[i] = telemetri[i].Replace('.', ',');
+                        }
+                    }
+                    
+
+                        // Ardından ExcelGuncelle metodunu çağırın
+                        ExcelGuncelle(telemetri);
+
+
+                        if (telemetri.Length >= 15)
+                        {
+                            // Verileri ayrıştır
+                            double sicaklik = Convert.ToDouble(telemetri[8]);
+                            double irtifaFarki = Convert.ToDouble(telemetri[6]);
+                            double basinc1 = Convert.ToDouble(telemetri[2]);
+                            double basinc2 = Convert.ToDouble(telemetri[3]);
+                            double pitch = Convert.ToDouble(telemetri[10]);
+                            double roll = Convert.ToDouble(telemetri[11]);
+                            double yaw = Convert.ToDouble(telemetri[12]);
+                            double yukseklik1 = Convert.ToDouble(telemetri[4]);
+                            double yukseklik2 = Convert.ToDouble(telemetri[5]);
+                            double inisHizi = Convert.ToDouble(telemetri[7]);
+
+                            double pilGerilimi = Convert.ToDouble(telemetri[9]);
+                            double iotData = Convert.ToDouble(telemetri[14]);
+
+                            string hatakodlar = telemetri[1];
+
+                            x = Convert.ToInt32(telemetri[10]);
+                            y = Convert.ToInt32(telemetri[11]);
+                            z = Convert.ToInt32(telemetri[12]);
+
+
+                            // Anlık zaman
+                            double nowOADate = DateTime.Now.ToOADate();
+
+                            // UI güncellemeleri ana iş parçacığında yapılmalı
+                            this.Invoke((Action)(() =>
+                            {
+                                try
+                                {
+                                   // Hata kodlarına göre PictureBox renklendirme
+                                    UpdatePictureBoxes(hatakodlar);
+                                    hataKod.Text = $"<{hatakodlar}>";
+
+                                    // Grafik güncellemeleri
+                                    UpdateChart(chart1, sicaklik, nowOADate);
+                                    UpdateChart(chart2, irtifaFarki, nowOADate);
+                                    UpdateChart(chart9, pilGerilimi, nowOADate);
+                                    UpdateChart(chart4, iotData, nowOADate);
+                                    UpdateChart(chart3, inisHizi, nowOADate);
+
+                                    UpdateDualSeriesChart(chart7, basinc1, basinc2, nowOADate);
+                                    UpdateDualSeriesChart(chart5, yukseklik1, yukseklik2, nowOADate);
+
+                                    UpdateTripleSeriesChart(chart8, pitch, roll, yaw, nowOADate);
+
+                                    // OpenGL kontrolleri yenile
+                                    glControl1.Invalidate();
+                                  
+                                }
+                                catch (Exception uiEx)
+                                {
+                                    // UI güncellemeleri sırasında oluşan hataları yakala
+                                    //MessageBox.Show($"UI Güncelleme Hatası: {uiEx.Message}");
+                                }
+                            }));
+
+                            // Verileri temizle
+                            serialPort1.DiscardInBuffer();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        
+                        //MessageBox.Show($"Veri İşleme Hatası: {ex.Message}");
+                    }
+                });
+            }
+
+            // Tekli seri grafiği güncelle
+            private void UpdateChart(Chart chart, double yValue, double nowOADate)
+            {
+                //chart.ChartAreas[0].AxisY.Minimum = yMin;
+                //chart.ChartAreas[0].AxisY.Maximum = yMax;
+
+                // X ekseni sınırları için zaman dilimini tanımla
+                double timeSpanSeconds = 3.0; // Son 3 saniye
+                double xAxisMinimum = nowOADate - timeSpanSeconds / (24.0 * 60 * 60);
+                double xAxisMaximum = nowOADate;
+
+                chart.Series[0].Points.AddXY(nowOADate, yValue);
+
+                // X ekseni sınırlarını ayarla
+                chart.ChartAreas[0].AxisX.Minimum = xAxisMinimum;
+                chart.ChartAreas[0].AxisX.Maximum = xAxisMaximum;
+
+                // Eski verileri temizle
+                while (chart.Series[0].Points.Count > 0 && chart.Series[0].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[0].Points.RemoveAt(0);
+                }
+
+                chart.ChartAreas[0].AxisX.Interval = 1;
+                chart.ChartAreas[0].AxisX.IntervalType = DateTimeIntervalType.Seconds;
+                chart.ChartAreas[0].RecalculateAxesScale();
+            }
+        
+            // Çift seri grafiği güncelle
+            private void UpdateDualSeriesChart(Chart chart,double  yValue1, double yValue2, double nowOADate)
+            {
+                //chart.ChartAreas[0].AxisY.Minimum = yMin;
+                //chart.ChartAreas[0].AxisY.Maximum = yMax;
+
+                // X ekseni sınırları için zaman dilimini tanımla
+                double timeSpanSeconds = 3.0; // Son 3 saniye
+                double xAxisMinimum = nowOADate - timeSpanSeconds / (24.0 * 60 * 60);
+                double xAxisMaximum = nowOADate;
+
+                chart.Series[0].Points.AddXY(nowOADate, yValue1);
+                chart.Series[1].Points.AddXY(nowOADate, yValue2);
+
+                // X ekseni sınırlarını ayarla
+                chart.ChartAreas[0].AxisX.Minimum = xAxisMinimum;
+                chart.ChartAreas[0].AxisX.Maximum = xAxisMaximum;
+
+                // Eski verileri temizle
+                while (chart.Series[0].Points.Count > 0 && chart.Series[0].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[0].Points.RemoveAt(0);
+                }
+
+                while (chart.Series[1].Points.Count > 0 && chart.Series[1].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[1].Points.RemoveAt(0);
+                }
+
+                chart.ChartAreas[0].AxisX.Interval = 1;
+                chart.ChartAreas[0].AxisX.IntervalType = DateTimeIntervalType.Seconds;
+                chart.ChartAreas[0].RecalculateAxesScale();
+            }
+
+            // Üçlü seri grafiği güncelle
+            private void UpdateTripleSeriesChart(Chart chart, double yValue1, double yValue2, double yValue3, double nowOADate)
+            {
+                // Y ekseninin minimum ve maksimum değerlerini ayarla
+                //chart.ChartAreas[0].AxisY.Minimum = yMin;
+                //chart.ChartAreas[0].AxisY.Maximum = yMax;
+
+                // Üç veri serisini güncelle
+                chart.Series[0].Points.AddXY(nowOADate, yValue1);
+                chart.Series[1].Points.AddXY(nowOADate, yValue2);
+                chart.Series[2].Points.AddXY(nowOADate, yValue3);
+
+                // X ekseni sınırları için zaman dilimini tanımla
+                double timeSpanSeconds = 3.0; // Son 3 saniye
+                double xAxisMinimum = nowOADate - timeSpanSeconds / (24.0 * 60 * 60);
+                double xAxisMaximum = nowOADate;
+
+                // X ekseni sınırlarını ayarla
+                chart.ChartAreas[0].AxisX.Minimum = xAxisMinimum;
+                chart.ChartAreas[0].AxisX.Maximum = xAxisMaximum;
+
+                // Eski verileri temizle
+                while (chart.Series[0].Points.Count > 0 && chart.Series[0].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[0].Points.RemoveAt(0);
+                }
+
+                while (chart.Series[1].Points.Count > 0 && chart.Series[1].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[1].Points.RemoveAt(0);
+                }
+
+                while (chart.Series[2].Points.Count > 0 && chart.Series[2].Points[0].XValue < xAxisMinimum)
+                {
+                    chart.Series[2].Points.RemoveAt(0);
+                }
+
+                chart.ChartAreas[0].AxisX.Interval = 1;
+                chart.ChartAreas[0].AxisX.IntervalType = DateTimeIntervalType.Seconds;
+                chart.ChartAreas[0].RecalculateAxesScale();
+            }
+
+
+            // Hata kodlarına göre PictureBox'ları güncelle
+            private void UpdatePictureBoxes(string hatakodlar)
+        {
+            for (int i = 0; i < hatakodlar.Length; i++)
+            {
+                char hatakod = hatakodlar[i];
+                int hataKodInt = Convert.ToInt32(hatakod.ToString());
+
+                PictureBox pictureBox = (PictureBox)this.Controls.Find("pictureBox" + (i + 1), true)[0];
+
+                if (hataKodInt == 0)
+                {
+                    pictureBox.BackColor = Color.Green;
+                }
+                else if (hataKodInt == 1)
+                {
+                    pictureBox.BackColor = Color.Red;
+                }
+            }
+        }
+
+        private void ExcelGuncelle(string[] telemetri)
+        {
+            _ = this.Invoke(new Action(() =>
+            {
+                // DataGridView güncelle
+
+                satir = dataGridView1.Rows.Add();
+                dataGridView1.Rows[satir].Cells[0].Value = paketNo ;
+                dataGridView1.Rows[satir].Cells[1].Value = telemetri[0];
+                dataGridView1.Rows[satir].Cells[2].Value = telemetri[1];
+                dataGridView1.Rows[satir].Cells[3].Value = DateTime.Now.Day + "/" + DateTime.Now.Month + "/" + DateTime.Today.Year + "," + DateTime.Now.Hour + "/" + DateTime.Now.Minute + "/" + DateTime.Now.Second;
+                dataGridView1.Rows[satir].Cells[4].Value = telemetri[2] + " Pa";
+                dataGridView1.Rows[satir].Cells[5].Value = telemetri[3] + " Pa";
+                dataGridView1.Rows[satir].Cells[6].Value = telemetri[4] + " m";
+                dataGridView1.Rows[satir].Cells[7].Value = telemetri[5] + " m";
+                dataGridView1.Rows[satir].Cells[8].Value = telemetri[6] + " m";
+                dataGridView1.Rows[satir].Cells[9].Value = telemetri[7] + " m/s";
+                dataGridView1.Rows[satir].Cells[10].Value = telemetri[8] + " °C";
+                dataGridView1.Rows[satir].Cells[11].Value = telemetri[9] + " V";
+
+                dataGridView1.Rows[satir].Cells[15].Value = telemetri[10] + " °";
+                dataGridView1.Rows[satir].Cells[16].Value = telemetri[11] + " °";
+                dataGridView1.Rows[satir].Cells[17].Value = telemetri[12] + " °";
+                dataGridView1.Rows[satir].Cells[18].Value = telemetri[13];
+                dataGridView1.Rows[satir].Cells[19].Value = telemetri[14] + " °C";
+                dataGridView1.Rows[satir].Cells[20].Value = 517266;
+                paketNo++;
+
+
+
+
+
+
+
+
+
+
+
+
+                dataGridView1.FirstDisplayedScrollingRowIndex = dataGridView1.Rows[satir].Index;
+            }));
+        }
+        
+        private void TimerXYZ_Tick(object sender, EventArgs e)
+        {
+            if (cx == true)
+            {
+                if (x < 360)
+                    x += 5;
+                else
+                    x = 0;
+                lblX.Text = x.ToString();
+            }
+            if (cy == true)
+            {
+                if (y < 360)
+                    y += 5;
+                else
+                    y = 0;
+                lblY.Text = y.ToString();
+            }
+            if (cz == true)
+            {
+                if (z < 360)
+                    z += 5;
+                else
+                    z = 0;
+                lblZ.Text = z.ToString();
+            }
+            glControl1.Invalidate();
+        }
+
+        [Obsolete]
+        private void glControl1_Paint(object sender, PaintEventArgs e)
+        {
+            float step = 1.0f;
+            float topla = step;
+            float radius = 5.0f;
+            float dikey1 = radius;
+            _ = -radius;
+            GL.Clear(ClearBufferMask.ColorBufferBit);
+            GL.Clear(ClearBufferMask.DepthBufferBit);
+
+            Matrix4 perspective = Matrix4.CreatePerspectiveFieldOfView(1.04f, 4 / 3, 1, 10000);
+            Matrix4 lookat = Matrix4.LookAt(25, 0, 0, 0, 0, 0, 0, 1, 0);
+            GL.MatrixMode(OpenTK.Graphics.OpenGL.MatrixMode.Projection);
+            GL.LoadIdentity();
+            GL.LoadMatrix(ref perspective);
+            GL.MatrixMode(OpenTK.Graphics.OpenGL.MatrixMode.Modelview);
+            GL.LoadIdentity();
+            GL.LoadMatrix(ref lookat);
+            GL.Viewport(0, 0, glControl1.Width, glControl1.Height);
+            GL.Enable(EnableCap.DepthTest);
+            GL.DepthFunc(DepthFunction.Less);
+
+            GL.Rotate(x, 1.0, 0.0, 0.0);//ÖNEMLİ
+            GL.Rotate(z, 0.0, 1.0, 0.0);
+            GL.Rotate(y, 0.0, 0.0, 1.0);
+
+            silindir(step, topla, radius, 6, -10);
+            silindir(0.01f, topla, 0.5f, 9, 9.7f);
+            silindir(0.01f, topla, 0.1f, 5, dikey1 + 5);
+
+
+            GL.Begin(BeginMode.Lines);
+
+            GL.Color3(Color.FromArgb(250, 0, 0));
+            GL.Vertex3(-30.0, 0.0, 0.0);
+            GL.Vertex3(30.0, 0.0, 0.0);
+
+
+            GL.Color3(Color.FromArgb(0, 0, 0));
+            GL.Vertex3(0.0, 30.0, 0.0);
+            GL.Vertex3(0.0, -30.0, 0.0);
+
+            GL.Color3(Color.FromArgb(0, 0, 250));
+            GL.Vertex3(0.0, 0.0, 30.0);
+            GL.Vertex3(0.0, 0.0, -30.0);
+
+            GL.End();
+            //GraphicsContext.CurrentContext.VSync = true;
+            glControl1.SwapBuffers();
+        }
+
+        private void btnX_Click(object sender, EventArgs e)
+        {
+            if (cx == false)
+                cx = true;
+            else
+                cx = false;
+            TimerXYZ.Start();
+        }
+
+        private void btnTelemetri_Click(object sender, EventArgs e)
+        {
+            serialPort1.BaudRate = Convert.ToInt32(textBox1.Text);
+
+            try
+            {
+                serialPort1.PortName = cmbSerialPort.Text;
+                if (!serialPort1.IsOpen)
+                {
+
+                    timer1.Start();
+
+                    serialPort1.Open();
+                    //serialPort1.Parity = Parity.None;
+                    //serialPort1.DataBits = 8;
+                    //serialPort1.StopBits = StopBits.One;
+
+
+                    btnDurdur.Enabled = true;
+                    btnTelemetri.Enabled = false;
+                }
+
+
+            }
+            catch (Exception)
+            {
+                MessageBox.Show("BAĞLANTI KURULAMADI");
+                btnDurdur.Enabled = true;
+
+            }
+        }
+
+        private void btnDurdur_Click(object sender, EventArgs e)
+        {
+            serialPort1.Close();
+            timer1.Stop();
+            btnTelemetri.Enabled = true;
+            btnDurdur.Enabled = false;
+            MessageBox.Show("BAĞLANTI KESİLDİ");
+        }
+        private async void button3_Click(object sender, EventArgs e)
+        {
+            await Task.Run(() =>
+            {
+                // Excel uygulaması oluşturun
+                Microsoft.Office.Interop.Excel.Application uyg = new Microsoft.Office.Interop.Excel.Application();
+                uyg.Visible = true;
+                Microsoft.Office.Interop.Excel.Workbook kitap = uyg.Workbooks.Add(System.Reflection.Missing.Value);
+                Microsoft.Office.Interop.Excel.Worksheet sheet1 = (Microsoft.Office.Interop.Excel.Worksheet)kitap.Sheets[1];
+
+                // DataGridView başlıklarını Excel'e ekle
+                for (int i = 0; i < dataGridView1.Columns.Count; i++)
+                {
+                    Microsoft.Office.Interop.Excel.Range myRange = (Microsoft.Office.Interop.Excel.Range)sheet1.Cells[1, i + 1];
+                    myRange.Value2 = dataGridView1.Columns[i].HeaderText;
+                }
+
+                // DataGridView verilerini Excel'e ekle
+                for (int i = 0; i < dataGridView1.Columns.Count; i++)
+                {
+                    for (int j = 0; j < dataGridView1.Rows.Count; j++)
+                    {
+                        Microsoft.Office.Interop.Excel.Range myRange = (Microsoft.Office.Interop.Excel.Range)sheet1.Cells[j + 2, i + 1];
+                        myRange.Value2 = dataGridView1[i, j].Value;
+                    }
+                }
+            });
+        }
+        private void btnY_Click(object sender, EventArgs e)
+        {
+            if (cy == false)
+                cy = true;
+            else
+                cy = false;
+            TimerXYZ.Start();
+        }
+
+        private async void button1_Click_1(object sender, EventArgs e)
+        {
+            if (!isRecording)
+            {
+                // Masaüstündeki klasör yolu
+                string folderPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "KameraKayıtları");
+
+                // Klasör yoksa oluşturun
+                if (!Directory.Exists(folderPath))
+                {
+                    Directory.CreateDirectory(folderPath);
+                }
+
+                // Video kaydını başlat
+                videoSource = new VideoCaptureDevice(videoDevices[comboBox1.SelectedIndex].MonikerString);
+
+                // En düşük çözünürlük ve uygun FPS'i seçin
+                videoSource.VideoResolution = videoSource.VideoCapabilities
+                    .OrderBy(v => v.FrameSize.Width * v.FrameSize.Height)
+                    .FirstOrDefault();
+
+                int videoWidth = videoSource.VideoResolution.FrameSize.Width;
+                int videoHeight = videoSource.VideoResolution.FrameSize.Height;
+                int frameRate = videoSource.VideoResolution.AverageFrameRate;
+
+                string videoFilePath = Path.Combine(folderPath, "webcam_video.avi");
+                videoWriter = new VideoFileWriter();
+                videoWriter.Open(videoFilePath, videoWidth, videoHeight, frameRate, VideoCodec.MPEG4);
+
+                videoSource.NewFrame += VideoSource_NewFrame;
+                videoSource.Start();
+
+                isRecording = true;
+                button1.Text = "Kaydı Durdur";
+            }
+            else
+            {
+                // Kaydı durdur
+                isRecording = false;
+                if (videoSource.IsRunning)
+                {
+                    videoSource.SignalToStop();
+                }
+                videoWriter.Close();
+
+                button1.Text = "Kaydı Başlat";
+            }
+        }
+
+        private void VideoSource_NewFrame(object sender, AForge.Video.NewFrameEventArgs eventArgs)
+        {
+            using (Bitmap videoFrame = (Bitmap)eventArgs.Frame.Clone())
+            {
+                if (pictureBox6.InvokeRequired)
+                {
+                    pictureBox6.Invoke(new Action(() =>
+                    {
+                        if (pictureBox6.Image != null)
+                        {
+                            pictureBox6.Image.Dispose();
+                        }
+                        pictureBox6.Image = (Bitmap)videoFrame.Clone();
+                    }));
+                }
+                else
+                {
+                    if (pictureBox6.Image != null)
+                    {
+                        pictureBox6.Image.Dispose();
+                    }
+                    pictureBox6.Image = (Bitmap)videoFrame.Clone();
+                }
+
+                if (isRecording)
+                {
+                    videoWriter.WriteVideoFrame(videoFrame);
+                }
+            }
+        }
+
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            if (videoSource != null && videoSource.IsRunning)
+            {
+                videoSource.SignalToStop();
+                videoSource.WaitForStop();
+            }
+
+            if (videoWriter != null && isRecording)
+            {
+                videoWriter.Close();
+            }
+        }
+
+        private void ayril_Click_1(object sender, EventArgs e)
+        {
+            if (serialPort1.IsOpen)
+            {
+               
+                serialPort1.Write("A");
+                
+                ayril.Enabled = true; // Butonu geçici olarak devre dışı bırak
+                                       // Belirli bir süre sonra butonu tekrar etkinleştirmek için timer kullanabilirsiniz
+            }
+            else
+            {
+                MessageBox.Show("Seri port açık değil!");
+            }
+
+        }
+
+        private void button8_Click(object sender, EventArgs e)
+        {
+            if (serialPort1.IsOpen)
+            {
+               
+                serialPort1.Write("L");
+
+                ayril.Enabled = true; // Butonu geçici olarak devre dışı bırak
+                                      // Belirli bir süre sonra butonu tekrar etkinleştirmek için timer kullanabilirsiniz
+            }
+            else
+            {
+                MessageBox.Show("Seri port açık değil!");
+            }
+        }
+
+        private void kalibreEt_Click(object sender, EventArgs e)
+        {
+            if (serialPort1.IsOpen)
+            {
+                
+                    serialPort1.Write("K");
+               
+                kalibreEt.Enabled = true; // Butonu geçici olarak devre dışı bırak
+                                       // Belirli bir süre sonra butonu tekrar etkinleştirmek için timer kullanabilirsiniz
+            }
+            else
+            {
+                MessageBox.Show("Seri port açık değil!");
+            }
+        }
+        private void btnZ_Click(object sender, EventArgs e)
+        {
+            if (cz == false)
+                cz = true;
+            else
+                cz = false;
+            TimerXYZ.Start();
+        }
+        private void glControl1_Load(object sender, EventArgs e)
+        {
+            GL.ClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            GL.Enable(EnableCap.DepthTest);//sonradan yazdık
+        }
+
+        [Obsolete]
+        private void silindir(float step, float topla, float radius, float dikey1, float dikey2)
+        {
+            float eski_step = 0.1f;
+            GL.Begin(BeginMode.Quads);//Y EKSEN CIZIM DAİRENİN
+            while (step <= 360)
+            {
+                if (step < 45)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 90)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 135)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 180)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 225)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 270)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 315)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 360)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+
+
+                float ciz1_x = (float)(radius * Math.Cos(step * Math.PI / 180F));
+                float ciz1_y = (float)(radius * Math.Sin(step * Math.PI / 180F));
+                GL.Vertex3(ciz1_x, dikey1, ciz1_y);
+
+                float ciz2_x = (float)(radius * Math.Cos((step + 2) * Math.PI / 180F));
+                float ciz2_y = (float)(radius * Math.Sin((step + 2) * Math.PI / 180F));
+                GL.Vertex3(ciz2_x, dikey1, ciz2_y);
+
+                GL.Vertex3(ciz1_x, dikey2, ciz1_y);
+                GL.Vertex3(ciz2_x, dikey2, ciz2_y);
+                step += topla;
+            }
+            GL.End();
+            GL.Begin(BeginMode.Lines);
+            step = eski_step;
+            topla = step;
+            while (step <= 180)// UST KAPAK
+            {
+                if (step < 45)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 90)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 135)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 180)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 225)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 270)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 315)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 360)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+
+
+                float ciz1_x = (float)(radius * Math.Cos(step * Math.PI / 180F));
+                float ciz1_y = (float)(radius * Math.Sin(step * Math.PI / 180F));
+                GL.Vertex3(ciz1_x, dikey1, ciz1_y);
+
+                float ciz2_x = (float)(radius * Math.Cos((step + 180) * Math.PI / 180F));
+                float ciz2_y = (float)(radius * Math.Sin((step + 180) * Math.PI / 180F));
+                GL.Vertex3(ciz2_x, dikey1, ciz2_y);
+
+                GL.Vertex3(ciz1_x, dikey1, ciz1_y);
+                GL.Vertex3(ciz2_x, dikey1, ciz2_y);
+                step += topla;
+            }
+
+            step = eski_step;
+            topla = step;
+            while (step <= 180)//ALT KAPAK
+            {
+                if (step < 45)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 90)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 135)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 180)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 225)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 270)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 315)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+                else if (step < 360)
+                    GL.Color3(Color.FromArgb(128, 128, 128));
+
+                float ciz1_x = (float)(radius * Math.Cos(step * Math.PI / 180F));
+                float ciz1_y = (float)(radius * Math.Sin(step * Math.PI / 180F));
+                GL.Vertex3(ciz1_x, dikey2, ciz1_y);
+
+                float ciz2_x = (float)(radius * Math.Cos((step + 180) * Math.PI / 180F));
+                float ciz2_y = (float)(radius * Math.Sin((step + 180) * Math.PI / 180F));
+                GL.Vertex3(ciz2_x, dikey2, ciz2_y);
+
+                GL.Vertex3(ciz1_x, dikey2, ciz1_y);
+                GL.Vertex3(ciz2_x, dikey2, ciz2_y);
+                step += topla;
+            }
+            GL.End();
+        }
+        }
+    }
+
+       
+   
+
+   
+
+       
+       
+       
+
+        
+       
+    
